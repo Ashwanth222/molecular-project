@@ -39,11 +39,11 @@ module.exports = {
 				// Enable/disable parameter merging method. More info: https://moleculer.services/docs/0.14/moleculer-web.html#Disable-merging
 				mergeParams: true,
 
-				// Enable authentication. Implement the logic into `authenticate` method. More info: https://moleculer.services/docs/0.14/moleculer-web.html#Authentication
+				// Enable authentication. Implement the logic into authenticate method. More info: https://moleculer.services/docs/0.14/moleculer-web.html#Authentication
 				authentication: false,
 
-				// Enable authorization. Implement the logic into `authorize` method. More info: https://moleculer.services/docs/0.14/moleculer-web.html#Authorization
-				authorization: false,
+				// Enable authorization. Implement the logic into authorize method. More info: https://moleculer.services/docs/0.14/moleculer-web.html#Authorization
+				authorization: true,
 
 				// The auto-alias feature allows you to declare your route alias directly in your services.
 				// The gateway will dynamically build the full routes from service schema.
@@ -112,7 +112,7 @@ module.exports = {
 		assets: {
 			folder: "public",
 
-			// Options to `server-static` module
+			// Options to server-static module
 			options: {}
 		}
 	},
@@ -120,9 +120,9 @@ module.exports = {
 	methods: {
 
 		/**
-		 * Authenticate the request. It check the `Authorization` token value in the request header.
+		 * Authenticate the request. It check the Authorization token value in the request header.
 		 * Check the token value & resolve the user by the token.
-		 * The resolved user will be available in `ctx.meta.user`
+		 * The resolved user will be available in ctx.meta.user
 		 *
 		 * PLEASE NOTE, IT'S JUST AN EXAMPLE IMPLEMENTATION. DO NOT USE IN PRODUCTION!
 		 *
@@ -138,9 +138,9 @@ module.exports = {
 			if (auth && auth.startsWith("Bearer")) {
 				const token = auth.slice(7);
 
-				// Check the token. Tip: call a service which verify the token. E.g. `accounts.resolveToken`
+				// Check the token. Tip: call a service which verify the token. E.g. accounts.resolveToken
 				if (token == "123456") {
-					// Returns the resolved user. It will be set to the `ctx.meta.user`
+					// Returns the resolved user. It will be set to the ctx.meta.user
 					return { id: 1, name: "John Doe" };
 
 				} else {
@@ -165,12 +165,34 @@ module.exports = {
 		 * @param {IncomingRequest} req
 		 * @returns {Promise}
 		 */
-		async authorize(ctx, route, req) {
-			// Get the authenticated user.
-			const user = ctx.meta.user;
+		async authorize(ctx, route, request) {
+			let token, user;
+			const authorizationHeader = request.headers.authorization;
+			console.log("authorization header", authorizationHeader);
+			if (authorizationHeader) {
+				const token = authorizationHeader.split(" ")[1];
+				const secret = process.env.SECRET_KEY || "my-jwt-secret";
+				if (token) {
+					// BASED ON ROUTE PATHS CAN CALL DIFFERENT REOLVEACTIONS
+					user = await ctx.call("users.resolveToken", { token: token });
+					if (user) {
+						ctx.meta.user = user;
+						ctx.meta.token = token;
+						ctx.meta.userID = user._id
+					}
+					else {
+						// token is wrong
+						throw new ApiGateway.Errors.UnAuthorizedError(ApiGateway.Errors.ERR_INVALID_TOKEN);
+					}
+				}
+				else {
+					throw new ApiGateway.Errors.UnAuthorizedError(ApiGateway.Errors.ERR_NO_TOKEN)
+				}
 
-			// It check the `auth` property in action schema.
-			if (req.$action.auth == "required" && !user) {
+			}
+
+			// It check the auth property in action schema.
+			if (request.$action.auth == "required" && !user) {
 				throw new ApiGateway.Errors.UnAuthorizedError("NO_RIGHTS");
 			}
 		}
